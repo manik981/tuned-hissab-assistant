@@ -2,9 +2,9 @@ import streamlit as st
 import speech_recognition as sr
 from streamlit_mic_recorder import mic_recorder
 import os
-import tempfile
 
 # main2.py ko 'main' naam se import kar rahe hain taaki code saaf rahe
+# Yeh aapke naye RAG system ko istemal karega
 import main2 as main
 
 # ---------------------------
@@ -20,28 +20,27 @@ mode = st.radio("Aap input kaise dena chahte hain:", ["🎤 Voice", "⌨️ Text
 
 user_story = None
 
-# --- Voice Input Logic ---
+# --- Voice Input Logic (FIXED - aapke app1.py jaisa) ---
 if mode == "🎤 Voice":
     st.write("Niche diye gaye button par click karke apni aawaz record karein.")
     
-    # streamlit_mic_recorder widget ka istemal karein
-    audio_info = mic_recorder(start_prompt="▶️ Record", stop_prompt="⏹️ Stop", key='recorder')
+    # mic_recorder seedhe audio bytes return karta hai
+    audio_bytes = mic_recorder(start_prompt="▶️ Record", stop_prompt="⏹️ Stop", key='recorder')
     
-    if audio_info and audio_info['bytes']:
+    if audio_bytes:
         st.info("Audio record ho gaya hai. Ab process kiya ja raha hai...")
         # User ko sunane ke liye audio play karein
-        st.audio(audio_info['bytes'], format="audio/wav")
+        st.audio(audio_bytes, format="audio/wav")
         
         # Audio ko process karke text mein badlein
         recognizer = sr.Recognizer()
         try:
-            # Audio bytes ko temporary file mein save karein
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio_file:
-                tmp_audio_file.write(audio_info['bytes'])
-                audio_filename = tmp_audio_file.name
-
+            # Audio bytes ko temporary file mein save karein (original tareeka)
+            with open("audio.wav", "wb") as f:
+                f.write(audio_bytes)
+            
             # Temporary file ko audio source ke roop mein istemal karein
-            with sr.AudioFile(audio_filename) as source:
+            with sr.AudioFile("audio.wav") as source:
                 audio_data = recognizer.record(source)
             
             # Google Speech Recognition se audio ko text mein badlein (Hindi)
@@ -57,8 +56,8 @@ if mode == "🎤 Voice":
             st.error(f"Audio process karte samay error aaya: {e}")
         finally:
             # Temporary file ko delete karein
-            if 'audio_filename' in locals() and os.path.exists(audio_filename):
-                os.remove(audio_filename)
+            if os.path.exists("audio.wav"):
+                os.remove("audio.wav")
 
 # --- Text Input Logic ---
 else:
@@ -68,19 +67,19 @@ else:
     )
 
 # ---------------------------
-# Process Query and Display Results
+# Process Query and Display Results (Naye RAG system ke saath)
 # ---------------------------
 if user_story:
     st.divider()
     st.subheader("📊 Aapka Detailed Hisaab")
     
-    # Environment variable se API key lein (Streamlit secrets ke liye behtar hai)
+    # Environment variable se API key lein
     api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
         st.error("❌ GOOGLE_API_KEY set nahi hai. Kripya environment variable set karein.")
     else:
-        # Display spinner while processing
+        # Spinner dikhayein jab tak process ho raha hai
         with st.spinner('Smart RAG system hisaab laga raha hai...'):
             try:
                 # `st.write_stream` ka istemal karein streaming response ke liye
@@ -90,15 +89,14 @@ if user_story:
                 # ---------------------------
                 # Audio Summary Generation
                 # ---------------------------
-                if detailed_text:
+                if detailed_text and detailed_text.strip():
                     st.divider()
                     st.subheader("🔊 Audio Summary")
                     with st.spinner('Audio summary banaya ja raha hai...'):
-                        audio_file = main.generate_audio_summary(api_key, detailed_text)
+                        # main module se audio function call karein
+                        audio_file = main.generate_audio_summary(api_key, detailed_text, slow=False)
                         if audio_file and os.path.exists(audio_file):
                             st.audio(audio_file, format="audio/mp3")
-                            # Aap audio file ko delete bhi kar sakte hain agar zaroorat na ho
-                            # os.remove(audio_file)
                         else:
                             st.warning("Audio summary generate nahi ho paya.")
 
