@@ -20,24 +20,27 @@ mode = st.radio("Aap input kaise dena chahte hain:", ["🎤 Voice", "⌨️ Text
 
 user_story = None
 
-# --- Voice Input Logic (FIXED - aapke app1.py jaisa) ---
+# --- Voice Input Logic (Error Corrected) ---
 if mode == "🎤 Voice":
     st.write("Niche diye gaye button par click karke apni aawaz record karein.")
     
-    # mic_recorder seedhe audio bytes return karta hai
-    audio_bytes = mic_recorder(start_prompt="▶️ Record", stop_prompt="⏹️ Stop", key='recorder')
+    # Library ek dictionary return karti hai, jisme audio data 'bytes' key ke andar hota hai.
+    audio_info = mic_recorder(start_prompt="▶️ Record", stop_prompt="⏹️ Stop", key='recorder')
     
-    if audio_bytes:
+    # Check karein ki dictionary aur 'bytes' key dono maujood hain.
+    if audio_info and audio_info['bytes']:
         st.info("Audio record ho gaya hai. Ab process kiya ja raha hai...")
-        # User ko sunane ke liye audio play karein
-        st.audio(audio_bytes, format="audio/wav")
+        
+        # User ko sunane ke liye audio play karein - yahan .get('bytes') ka istemal karein
+        st.audio(audio_info.get('bytes'), format="audio/wav")
         
         # Audio ko process karke text mein badlein
         recognizer = sr.Recognizer()
         try:
-            # Audio bytes ko temporary file mein save karein (original tareeka)
+            # Audio bytes ko temporary file mein save karein
             with open("audio.wav", "wb") as f:
-                f.write(audio_bytes)
+                # File mein likhne ke liye bhi .get('bytes') ka istemal karein
+                f.write(audio_info.get('bytes'))
             
             # Temporary file ko audio source ke roop mein istemal karein
             with sr.AudioFile("audio.wav") as source:
@@ -102,3 +105,4 @@ if user_story:
 
             except Exception as e:
                 st.error(f"Hisaab process karte samay ek anjaan error aayi: {e}")
+
