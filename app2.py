@@ -2,9 +2,10 @@ import streamlit as st
 import speech_recognition as sr
 from streamlit_mic_recorder import mic_recorder
 import os
+import io
+from pydub import AudioSegment
 
-# main2.py ko 'main' naam se import kar rahe hain taaki code saaf rahe
-# Yeh aapke naye RAG system ko istemal karega
+# main2.py ko 'main' naam se import kar rahe hain
 import main2 as main
 
 # ---------------------------
@@ -13,90 +14,81 @@ import main2 as main
 st.set_page_config(page_title="💰 Hissab Assistant", layout="centered")
 
 st.title("💰 Hissab Assistant (Smart RAG Version)")
-st.write("Apni kahani bolkar ya likhkar bhejiye, main aapka hisaab nikal dunga. Yeh version aapke sawaalon se seekhta hai!")
+st.write("Apni kahani bolkar ya likhkar bhejiye, main aapka hisaab nikal dunga.")
 
 # Input mode selection
 mode = st.radio("Aap input kaise dena chahte hain:", ["🎤 Voice", "⌨️ Text"], horizontal=True)
 
 user_story = None
 
-# --- Voice Input Logic (Error Corrected) ---
+# --- Voice Input Logic (Definitive Fix with Format Conversion) ---
 if mode == "🎤 Voice":
     st.write("Niche diye gaye button par click karke apni aawaz record karein.")
     
-    # Library ek dictionary return karti hai, jisme audio data 'bytes' key ke andar hota hai.
     audio_info = mic_recorder(start_prompt="▶️ Record", stop_prompt="⏹️ Stop", key='recorder')
     
-    # Check karein ki dictionary aur 'bytes' key dono maujood hain.
     if audio_info and audio_info['bytes']:
         st.info("Audio record ho gaya hai. Ab process kiya ja raha hai...")
+        st.audio(audio_info['bytes']) # Browser can play the original format
         
-        # User ko sunane ke liye audio play karein - yahan .get('bytes') ka istemal karein
-        st.audio(audio_info.get('bytes'), format="audio/wav")
-        
-        # Audio ko process karke text mein badlein
         recognizer = sr.Recognizer()
+        converted_audio_path = "audio_converted.wav"
         try:
-            # Audio bytes ko temporary file mein save karein
-            with open("audio.wav", "wb") as f:
-                # File mein likhne ke liye bhi .get('bytes') ka istemal karein
-                f.write(audio_info.get('bytes'))
+            # 1. Audio bytes ko memory mein load karein
+            # Browser se mila audio WebM/Opus format mein ho sakta hai
+            sound = AudioSegment.from_file(io.BytesIO(audio_info['bytes']))
             
-            # Temporary file ko audio source ke roop mein istemal karein
-            with sr.AudioFile("audio.wav") as source:
+            # 2. Sahi WAV format mein convert karke save karein
+            sound.export(converted_audio_path, format="wav")
+            
+            # 3. Ab convert hui file ko speech recognition ke liye istemal karein
+            with sr.AudioFile(converted_audio_path) as source:
                 audio_data = recognizer.record(source)
             
-            # Google Speech Recognition se audio ko text mein badlein (Hindi)
+            # Google Speech Recognition se audio ko text mein badlein
             recognized_text = recognizer.recognize_google(audio_data, language='hi-IN')
             st.success(f"📝 Aapne kaha: {recognized_text}")
             user_story = recognized_text
 
         except sr.UnknownValueError:
-            st.warning("Maaf kijiye, main aapki aawaz samajh nahin paya. Kripya dobara koshish karein ya type karein.")
+            st.warning("Maaf kijiye, main aapki aawaz samajh nahin paya.")
         except sr.RequestError as e:
             st.error(f"Google Speech Recognition service se connect nahin ho paya; {e}")
         except Exception as e:
             st.error(f"Audio process karte samay error aaya: {e}")
         finally:
-            # Temporary file ko delete karein
-            if os.path.exists("audio.wav"):
-                os.remove("audio.wav")
+            # Temporary converted file ko delete karein
+            if os.path.exists(converted_audio_path):
+                os.remove(converted_audio_path)
 
 # --- Text Input Logic ---
 else:
     user_story = st.text_area(
         "Apni kahani yahan likhiye:", 
-        placeholder="Example: Hum 3 dost, main, Rohit aur Suman, Goa gaye. Maine hotel ke 6000 diye, Rohit ne khaane ke 3000 kharch kiye."
+        placeholder="Example: Hum 3 dost Goa gaye..."
     )
 
 # ---------------------------
-# Process Query and Display Results (Naye RAG system ke saath)
+# Process Query and Display Results
 # ---------------------------
 if user_story:
     st.divider()
     st.subheader("📊 Aapka Detailed Hisaab")
     
-    # Environment variable se API key lein
     api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
-        st.error("❌ GOOGLE_API_KEY set nahi hai. Kripya environment variable set karein.")
+        st.error("❌ GOOGLE_API_KEY set nahi hai.")
     else:
-        # Spinner dikhayein jab tak process ho raha hai
         with st.spinner('Smart RAG system hisaab laga raha hai...'):
             try:
-                # `st.write_stream` ka istemal karein streaming response ke liye
                 response_generator = main.process_query_stream(api_key, user_story)
                 detailed_text = st.write_stream(response_generator)
                 
-                # ---------------------------
-                # Audio Summary Generation
-                # ---------------------------
                 if detailed_text and detailed_text.strip():
                     st.divider()
                     st.subheader("🔊 Audio Summary")
                     with st.spinner('Audio summary banaya ja raha hai...'):
-                        # main module se audio function call karein
                         audio_file = main.generate_audio_summary(api_key, detailed_text, slow=False)
                         if audio_file and os.path.exists(audio_file):
                             st.audio(audio_file, format="audio/mp3")
@@ -105,4 +97,3 @@ if user_story:
 
             except Exception as e:
                 st.error(f"Hisaab process karte samay ek anjaan error aayi: {e}")
-
